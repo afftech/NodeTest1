@@ -33,6 +33,13 @@ db.Status.hasOne(db.Product, {
 });
 db.Product.belongsTo(db.Status);
 
+db.Journal.hasOne(db.J_data, {
+  foreignKey: {
+    allowNull: false,
+  }
+});
+db.J_data.belongsTo(db.Journal);
+
 db.sequelize = sequelize
 db.Sequelize = Sequelize
 module.exports = db
