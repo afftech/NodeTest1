@@ -3,48 +3,134 @@ const { Store } = require('../models')
 const { Status } = require('../models')
 const { Journal } = require('../models')
 const { J_data } = require('../models')
-const { Op } = require('sequelize');
+const { Op, where } = require('sequelize');
+
 module.exports = {
     async get_balance(req, res) {//получаем остатки по фильтррам
         try {
-            let arr = [];
-            const { StoreId, plu, from, to } = req.body
-            journal_db = await Journal.findAll({
+            let arr1 = [];
+            let arr2 = [];
+            let on_shelf = [];
+            let on_order = [];
+            const { StoreId, plu, from_s, to_s, from_o, to_o } = req.body
+            journal_db_s = await Journal.findAll({//ищем в журнале действия связанные с опр магазином
                 where: {
                     StoreId: StoreId,
                     updatedAt: {
-                        [Op.between]: [from, to]
+                        [Op.between]: [from_s, to_s]
                     },
                     [Op.or]: [
                         { action: "Create balance-shelf" },
-                        { action: "Create balance-order" },
                         { action: "up balance-shelf" },
-                        { action: "up balance-order" },
-                        { action: "down balance-shelf" },
-                        { action: "down balance-order" }],
+                        { action: "down balance-shelf" },]
                 }
             })
-            try {
-
-                for (var i = 0; i < journal_db.length; i++) {
-                    let arr1 = { JournalId: journal_db[i].id };
-                    arr.unshift(arr1);
-                }
-                console.log(arr)
-            } catch (err) {
-                console.log(err)
+            for (var i = 0; i < journal_db_s.length; i++) {
+                let obj = { JournalId: journal_db_s[i].id };
+                arr1.unshift(obj);
             }
-
-            // console.log(journal_db);//получаем id  записи магазина
-
-            j_data_db = await J_data.findAll({
+            j_data_db_s = await J_data.findAll({
                 where: {
-                    [Op.or]: arr,
+                    [Op.or]: arr1,
                     plu: plu
                 }
             })
-            //console.log(status_db);
-            res.send(j_data_db)
+            journal_db_o = await Journal.findAll({
+                where: {
+                    StoreId: StoreId,
+                    updatedAt: {
+                        [Op.between]: [from_o, to_o]
+                    },
+                    [Op.or]: [
+                        { action: "Create balance-order" },
+                        { action: "up balance-order" },
+                        { action: "down balance-order" }],
+                }
+            })
+            for (var i = 0; i < journal_db_o.length; i++) {
+                let obj = { JournalId: journal_db_o[i].id };
+                arr2.unshift(obj);
+            }
+            j_data_db_o = await J_data.findAll({
+                where: {
+                    [Op.or]: arr2,
+                    plu: plu
+                }
+            })
+            for (var i = 0; i < j_data_db_s.length; i++) {
+                let obj = {
+                    plu: plu,
+                    where: journal_db_s[i].action,
+                    balanse: j_data_db_s[i].data,
+                    StoreId: journal_db_s[i].StoreId
+                };
+                on_shelf.unshift(obj);
+            }
+
+            for (var i = 0; i < j_data_db_o.length; i++) {
+                let obj = {
+                    plu: plu,
+                    where: journal_db_o[i].action,
+                    balanse: j_data_db_o[i].data,
+                    StoreId: journal_db_o[i].StoreId
+                };
+                on_order.unshift(obj);
+            }
+            res.send({ on_shelf, on_order })
+        } catch (err) {
+            res.status(500).send({
+                error: 'Ошибка получения списка'
+            })
+            console.log(err)
+        }
+    },
+    async get_journal(req, res) {//получаем остатки по фильтррам
+        try {
+            let arr = [];
+            let arr2 = [];
+            const { StoreId, plu, from, to, action } = req.body
+            journal_db = await Journal.findAll({
+                where: {
+                    StoreId: StoreId,
+                    action: action,
+                    updatedAt: {
+                        [Op.between]: [from, to]
+                    },
+
+                }
+            })
+            console.log(journal_db);//получаем id  записи магазина
+            if (action == "Add store") {
+                res.send(journal_db)
+            } else {
+
+
+                try {
+                    for (var i = 0; i < journal_db.length; i++) {
+                        let obj = { JournalId: journal_db[i].id };
+                        arr.unshift(obj);
+                    }
+                    console.log(arr)
+                } catch (err) {
+                    console.log(err)
+                }
+
+                j_data_db = await J_data.findAll({
+                    where: {
+                        [Op.or]: arr,
+                        plu: plu
+                    }
+                })
+                for (var i = 0; i < j_data_db.length; i++) {
+                    let obj = {
+                        plu: plu,
+                        where: journal_db[i].action,
+                        data: j_data_db[i].data,
+                    };
+                    arr2.unshift(obj);
+                }
+                res.send(arr2)
+            }
         } catch (err) {
             res.status(500).send({
                 error: 'Ошибка получения списка'
@@ -73,28 +159,27 @@ module.exports = {
         try {
             const { name, plu, store } = req.body;
             //проверка на уникальность продукта
-            console.log(name);
+            store_db = await Store.findOne({
+                where: {
+                    name: store
+                }
+            })
+            //поиск магазина или создание  //получение id магазина
+            if (store_db === null) {//если нет магазиеа
+                console.log("Add Store");
+                store_db = await Store.create({ name: store })
+                journal_db = await Journal.create({
+                    StoreId: store_db.id,
+                    action: "Add store",
+                });
+            }
             product_db = await Product.findOne({
                 where: {
+                    StoreId: store_db.id,
                     name: name
                 }
             })
             if (product_db === null) {
-                //поиск магазина или создание  //получение id магазина
-                store_db = await Store.findOne({
-                    where: {
-                        name: store
-                    }
-                })
-                if (store_db === null) {
-                    console.log("Add Store");
-                    store_db = await Store.create({ name: store })
-                    journal_db = await Journal.create({
-                        StoreId: store_db.id,
-                        action: "Add store",
-                    });
-                }
-                console.log("Добавляем");
                 //добавляем статус //создание баланса //получение id баланса
                 status_db = await Status.create({ is_on_shelf: 0, is_on_order: 0 });
                 journal_db = await Journal.create({

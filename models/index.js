@@ -26,11 +26,13 @@ db.Store.hasOne(db.Product, {
   }
 });
 db.Product.belongsTo(db.Store);
+
 db.Status.hasOne(db.Product, {
   foreignKey: {
     allowNull: false,
   }
 });
+
 db.Product.belongsTo(db.Status);
 
 db.Journal.hasOne(db.J_data, {
